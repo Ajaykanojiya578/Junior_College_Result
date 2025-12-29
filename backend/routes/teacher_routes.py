@@ -373,16 +373,6 @@ def view_complete_table(user_id=None, user_type=None):
     students = Student.query.filter_by(division=division).order_by(Student.roll_no).all()
     subjects = {s.subject_id: s.subject_code for s in Subject.query.all()}
 
-    # If the caller is a teacher, restrict subjects to those allocated to them for this division
-    allowed_subject_codes = None
-    if user_type and str(user_type).upper() == 'TEACHER':
-        allocs = TeacherSubjectAllocation.query.filter_by(teacher_id=user_id, division=division).all()
-        allowed_subject_codes = set()
-        for a in allocs:
-            subj = Subject.query.get(a.subject_id)
-            if subj and getattr(subj, 'subject_code', None):
-                allowed_subject_codes.add(subj.subject_code)
-
     rows = []
     for idx, s in enumerate(students, start=1):
         result = None
@@ -394,46 +384,21 @@ def view_complete_table(user_id=None, user_type=None):
         total_avg = 0
         total_grace = 0
 
-        # build list of subject codes to display (respect teacher allocations if applicable)
-        core_map = {"ENG": "eng", "ECO": "eco", "BK": "bk", "OC": "oc"}
-        display_core = [c for c in core_map.keys() if not allowed_subject_codes or c in allowed_subject_codes]
-        for code in display_core:
-            field = core_map[code]
-            if result:
-                avg = getattr(result, f"{field}_avg", None)
-                grace = getattr(result, f"{field}_grace", 0) or 0
-            else:
-                # fall back to Mark rows
-                m = Mark.query.join(Subject, Mark.subject_id == Subject.subject_id).filter(
-                    Mark.roll_no == s.roll_no, Mark.division == s.division, Subject.subject_code == code
-                ).first()
-                avg = m.annual if m and m.annual is not None else None
-                grace = m.grace if m and m.grace is not None else 0
-
+        for code, field in {
+            "ENG": "eng",
+            "ECO": "eco",
+            "BK": "bk",
+            "OC": "oc",
+        }.items():
+            avg = getattr(result, f"{field}_avg", None) if result else None
+            grace = getattr(result, f"{field}_grace", 0) if result else 0
             final = None
             if avg is not None:
                 final = (avg or 0) + (grace or 0)
                 total_avg += avg or 0
                 total_grace += grace or 0
 
-            mark_detail = None
-            if not result:
-                m = Mark.query.join(Subject, Mark.subject_id == Subject.subject_id).filter(
-                    Mark.roll_no == s.roll_no, Mark.division == s.division, Subject.subject_code == code
-                ).first()
-                if m:
-                    mark_detail = {
-                        "mark_id": m.mark_id,
-                        "unit1": m.unit1,
-                        "unit2": m.unit2,
-                        "term": m.term,
-                        "annual": m.annual,
-                        "tot": m.tot,
-                        "sub_avg": m.sub_avg,
-                        "grace": m.grace,
-                    }
-
-            subject_entries.append({"code": code, "avg": avg, "grace": grace, "final": final, "mark": mark_detail})
+            subject_entries.append({"code": code, "avg": avg, "grace": grace, "final": final})
 
         # optional subjects
         for code, field in {"HINDI": "hindi", "IT": "it", "MATHS": "maths", "SP": "sp"}.items():
@@ -444,45 +409,16 @@ def view_complete_table(user_id=None, user_type=None):
             if code in ("MATHS", "SP") and s.optional_subject_2 == code:
                 include = True
 
-            # also respect teacher allocations (if teacher view)
-            if include and allowed_subject_codes is not None and code not in allowed_subject_codes:
-                include = False
-
             if include:
-                if result:
-                    avg = getattr(result, f"{field}_avg", None)
-                    grace = getattr(result, f"{field}_grace", 0) or 0
-                else:
-                    m = Mark.query.join(Subject, Mark.subject_id == Subject.subject_id).filter(
-                        Mark.roll_no == s.roll_no, Mark.division == s.division, Subject.subject_code == code
-                    ).first()
-                    avg = m.annual if m and m.annual is not None else None
-                    grace = m.grace if m and m.grace is not None else 0
-
+                avg = getattr(result, f"{field}_avg", None) if result else None
+                grace = getattr(result, f"{field}_grace", 0) if result else 0
                 final = None
                 if avg is not None:
                     final = (avg or 0) + (grace or 0)
                     total_avg += avg or 0
                     total_grace += grace or 0
 
-                mark_detail = None
-                if not result:
-                    m = Mark.query.join(Subject, Mark.subject_id == Subject.subject_id).filter(
-                        Mark.roll_no == s.roll_no, Mark.division == s.division, Subject.subject_code == code
-                    ).first()
-                    if m:
-                        mark_detail = {
-                            "mark_id": m.mark_id,
-                            "unit1": m.unit1,
-                            "unit2": m.unit2,
-                            "term": m.term,
-                            "annual": m.annual,
-                            "tot": m.tot,
-                            "sub_avg": m.sub_avg,
-                            "grace": m.grace,
-                        }
-
-                subject_entries.append({"code": code, "avg": avg, "grace": grace, "final": final, "mark": mark_detail})
+                subject_entries.append({"code": code, "avg": avg, "grace": grace, "final": final})
 
         final_total = None
         if subject_entries:
