@@ -80,11 +80,13 @@ def generate_results_for_division(division: str):
         ).first()
 
         if not result:
-            result = Result(
-                roll_no=student.roll_no,
-                name=student.name,
-                division=student.division,
-            )
+            # SQLAlchemy model `Result` does not define a custom __init__ that
+            # accepts kwargs for columns; assign attributes explicitly to
+            # satisfy static checkers and avoid unexpected __init__ behavior.
+            result = Result()
+            result.roll_no = student.roll_no
+            result.name = student.name
+            result.division = student.division
 
         # total sums Annual marks only (used for percentage calculation)
         total = 0.0
@@ -112,14 +114,14 @@ def generate_results_for_division(division: str):
             m = mark_map.get("HINDI")
             annual = m.annual if m and m.annual is not None else 0.0
             result.hindi_avg = annual
-            result.hindi_grace = m.grace or 0.0
+            result.hindi_grace = (m.grace if m and m.grace is not None else 0.0)
             total += result.hindi_avg
             count += 1
         elif student.optional_subject == "IT":
             m = mark_map.get("IT")
             annual = m.annual if m and m.annual is not None else 0.0
             result.it_avg = annual
-            result.it_grace = m.grace or 0.0
+            result.it_grace = (m.grace if m and m.grace is not None else 0.0)
             total += result.it_avg
             count += 1
 
@@ -128,14 +130,14 @@ def generate_results_for_division(division: str):
             m = mark_map.get("MATHS")
             annual = m.annual if m and m.annual is not None else 0.0
             result.maths_avg = annual
-            result.maths_grace = m.grace or 0.0
+            result.maths_grace = (m.grace if m and m.grace is not None else 0.0)
             total += result.maths_avg
             count += 1
         elif student.optional_subject_2 == "SP":
             m = mark_map.get("SP")
             annual = m.annual if m and m.annual is not None else 0.0
             result.sp_avg = annual
-            result.sp_grace = m.grace or 0.0
+            result.sp_grace = (m.grace if m and m.grace is not None else 0.0)
             total += result.sp_avg
             count += 1
 

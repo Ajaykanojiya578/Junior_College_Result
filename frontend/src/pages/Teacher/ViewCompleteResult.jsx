@@ -65,6 +65,7 @@ export default function ViewCompleteResult() {
           </select>
         </div>
       </div>
+      {loading && <div style={{ marginTop: 12 }}>Loading...</div>}
 
       {!selectedRow && <div style={{ color: '#666', marginTop: 12 }}>Select a student to view the complete marksheet.</div>}
 

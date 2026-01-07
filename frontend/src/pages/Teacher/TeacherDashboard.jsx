@@ -57,19 +57,10 @@ export default function TeacherDashboard() {
     } catch (e) {
       // ignore
     }
-
-    // Clear impersonation keys for this tab
-    try {
-      sessionStorage.removeItem('impersonateToken');
-      sessionStorage.removeItem('impersonateTeacherId');
-      sessionStorage.removeItem('impersonateTeacherName');
-      sessionStorage.removeItem('adminBackupAuthToken');
-      sessionStorage.removeItem('adminBackupUser');
-    } catch (e) {}
-
     // Navigate back to the saved admin return URL (if present) or Manage Teachers
-    const returnUrl = sessionStorage.getItem('adminReturnUrl') || '/admin/teachers';
-    // Clear impersonation keys for this tab
+    let returnUrl = sessionStorage.getItem('adminReturnUrl') || '/admin/teachers';
+
+    // Clear impersonation keys for this tab (single cleanup)
     try {
       sessionStorage.removeItem('impersonateToken');
       sessionStorage.removeItem('impersonateTeacherId');
@@ -79,7 +70,16 @@ export default function TeacherDashboard() {
       sessionStorage.removeItem('adminReturnUrl');
     } catch (e) {}
 
-    // Navigate back (use full path if returnUrl was absolute or relative)
+    // If the saved return URL is relative, make it absolute so navigation is reliable
+    try {
+      if (!/^https?:\/\//i.test(returnUrl)) {
+        returnUrl = window.location.origin + returnUrl;
+      }
+    } catch (e) {
+      // fallback: leave as-is
+    }
+
+    // Navigate to the admin return URL
     window.location.href = returnUrl;
   }
 

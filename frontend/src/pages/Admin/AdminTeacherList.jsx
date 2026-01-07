@@ -1,5 +1,5 @@
 // src/pages/Admin/AdminTeacherList.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 
@@ -7,18 +7,18 @@ export default function AdminTeacherList() {
   const [teachers, setTeachers] = useState([]);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    loadTeachers();
-  }, []);
-
-  const loadTeachers = async () => {
+  const loadTeachers = useCallback(async () => {
     try {
       const res = await api.get("/admin/teachers");
       setTeachers(res.data);
     } catch (err) {
       alert("Failed to load teachers");
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadTeachers();
+  }, [loadTeachers]);
 
   const deleteTeacher = async (id) => {
     if (!window.confirm("Are you sure you want to delete this teacher?")) return;
@@ -38,7 +38,9 @@ export default function AdminTeacherList() {
       if (!token) return alert('Failed to impersonate teacher');
 
       // Capture current admin page (return URL) and backup admin auth/user
-      const currentReturn = window.location.pathname + window.location.search;
+      // Use the full current URL as the admin return URL so the teacher tab
+      // can reliably redirect back to the exact admin page it was opened from.
+      const currentReturn = window.location.href;
       const adminBackupToken = localStorage.getItem('authToken') || '';
       const adminBackupUser = localStorage.getItem('user') || '';
 

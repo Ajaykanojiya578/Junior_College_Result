@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 
-function LoginForm() {
+function LoginForm({ role }) {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [userid, setUserid] = useState("");
@@ -16,6 +16,11 @@ function LoginForm() {
     e.preventDefault();
     setError("");
 
+    if (!role) {
+      setError("Please select a role (Admin or Teacher).");
+      return;
+    }
+
     if (!userid || !password) {
       setError("Enter both userid and password");
       return;
@@ -23,7 +28,7 @@ function LoginForm() {
 
     try {
       // ✅ SINGLE LOGIN ENDPOINT
-      const res = await api.post("/auth/login", { userid, password });
+      const res = await api.post("/auth/login", { userid, password, role });
       const userData = res.data;
 
       // wait for auth context to populate user info before navigating

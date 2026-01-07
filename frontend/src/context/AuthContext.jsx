@@ -22,9 +22,10 @@ export function AuthProvider({ children }) {
     else localStorage.removeItem("user");
   }, [user]);
 
-  // Try to validate with server on mount. Prefer an impersonation token
-  // stored in sessionStorage (tab-scoped) so admin can open teacher panel
-  // in a separate tab without affecting the admin session in the original tab.
+  // Try to validate with server on mount or when `user` changes.
+  // Prefer an impersonation token stored in sessionStorage (tab-scoped)
+  // so admin can open teacher panel in a separate tab without affecting
+  // the admin session in the original tab.
   useEffect(() => {
     let mounted = true;
     async function check() {
@@ -57,24 +58,27 @@ export function AuthProvider({ children }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [user]);
 
   const login = async (data) => {
-    // Store token first so subsequent API calls include it
-    if (data && data.token) {
-      localStorage.setItem("authToken", data.token);
+    if (!data || !data.token) {
+      throw new Error("Missing authentication token");
     }
 
-    // Fetch canonical user info from backend and store role + details
+    // Temporarily store token so the api client can use it for /auth/me.
+    // If verification fails, remove the token and propagate the error so
+    // the caller can show an appropriate message and no session is created.
+    localStorage.setItem("authToken", data.token);
+
     try {
       const me = await api.get("/auth/me");
-      setUser({ ...(me.data || {}), role: data.role, token: data.token });
-      return { ...(me.data || {}), role: data.role, token: data.token };
+      const userObj = { ...(me.data || {}), role: data.role, token: data.token };
+      setUser(userObj);
+      return userObj;
     } catch (err) {
-      // fallback to minimal info
-      const fallback = { role: data.role, token: data.token };
-      setUser(fallback);
-      return fallback;
+      // verification failed -> remove transient token and rethrow
+      localStorage.removeItem("authToken");
+      throw err;
     }
   };
 

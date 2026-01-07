@@ -3,10 +3,10 @@ import React, { useState } from "react";
 import LoginSelector from "../components/auth/LoginSelector";
 import LoginForm from "../components/auth/LoginForm";
 
-const logoUrl = "/logo.png"; // served from public/
+const logoUrl = "/logo.jpg"; // served from public/
 
 export default function LoginPage() {
-  const [role, setRole] = useState("teacher"); // default to teacher
+  const [role, setRole] = useState("");
 
   return (
     <div style={{
@@ -26,7 +26,7 @@ export default function LoginPage() {
       }}>
         <div style={{ textAlign: "center", marginBottom: 12 }}>
           {/* logo - the path will be transformed to a usable URL by your environment */}
-          <img src={logoUrl} alt="logo" style={{ width: 100, height: "auto", marginBottom: 8 }} />
+          <img src={logoUrl} alt="logo" style={{ width: 325, height: "14", marginBottom: 8 }} />
           <h2 style={{ margin: 0, fontSize: 20 }}>junior college </h2>
           <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>Login as Admin or Teacher</p>
         </div>

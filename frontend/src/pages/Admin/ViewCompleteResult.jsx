@@ -57,7 +57,6 @@ export default function AdminViewCompleteResult() {
     }
   }
 
-  const students = rows.map(r => ({ roll_no: r.roll_no, name: r.name }));
   const selectedRow = rows.find(r => r.roll_no === selectedStudent?.roll_no) || rows[0] || null;
 
   return (
@@ -92,6 +91,13 @@ export default function AdminViewCompleteResult() {
             }} 
             style={{ padding: '6px 10px', height: 30 }}>Search</button>
           </div>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 8, color: '#444' }}>
+        <div style={{ marginBottom: 6, fontWeight: 600 }}>Admin Excel export</div>
+        <div style={{ fontSize: 13, color: '#555' }}>
+          The admin Excel aggregates marks from all teachers into the shared format: Roll, Student Name, Subject, Division, Unit1, Term, Unit2, Annual, Grace. Downloading the Excel will generate a snapshot for the selected division or individual student.
         </div>
       </div>
 
@@ -137,8 +143,33 @@ export default function AdminViewCompleteResult() {
             </tbody>
           </table>
 
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
               <button onClick={() => setShowDetails(d => !d)} style={{ padding: '8px 10px' }}>{showDetails ? 'Hide' : 'Show'} Detailed Marks</button>
+              <button onClick={async () => {
+                if (!division && !selectedRow) return alert('No student or division selected');
+                try {
+                  const params = {};
+                  if (division) params.division = division;
+                  if (selectedRow && rows.length === 1) params.roll_no = selectedRow.roll_no;
+                  const res = await api.get('/admin/excel/marksheet', { params, responseType: 'blob' });
+                  const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  let filename = 'complete_results';
+                  if (division) filename += `_${division}`;
+                  if (selectedRow && rows.length === 1) filename += `_roll_${selectedRow.roll_no}`;
+                  filename += '.xlsx';
+                  a.download = filename;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  window.URL.revokeObjectURL(url);
+                } catch (err) {
+                  console.error(err);
+                  alert(err.response?.data?.error || err.message || 'Failed to download Excel');
+                }
+              }} style={{ padding: '8px 10px' }}>Link to Excel</button>
             </div>
 
             {showDetails && (

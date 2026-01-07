@@ -20,7 +20,7 @@ export default function AdminDashboard() {
     <div style={{ display: 'flex', minHeight: '80vh' }}>
       <aside style={{ width: 220, background: '#f8fafc', padding: 20, borderRight: '1px solid #eef2f6' }}>
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontWeight: 800, color: '#2c3e50' }}>Admin Panel</div>
+          <div style={{ fontWeight: 800, color: '#2c3e50' }}>Admin </div>
           <div style={{ fontSize: 12, color: '#6b7280' }}>{user?.name}</div>
         </div>
 

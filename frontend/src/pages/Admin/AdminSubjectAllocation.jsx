@@ -35,6 +35,19 @@ export default function AdminSubjectAllocation() {
     }
   };
 
+  const handleDelete = async (allocation_id) => {
+    if (!allocation_id) return;
+    const ok = window.confirm('Are you sure you want to delete this subject allocation?');
+    if (!ok) return;
+    try {
+      await api.delete(`/admin/allocations/${allocation_id}`);
+      loadInitialData();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete allocation');
+    }
+  };
+
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
@@ -114,11 +127,14 @@ export default function AdminSubjectAllocation() {
           </tr>
         </thead>
         <tbody>
-          {allocations.map((a, idx) => (
-            <tr key={idx}>
-              <td>{a.teacher_id}</td>
-              <td>{a.subject_id}</td>
+          {allocations.map((a) => (
+            <tr key={a.allocation_id || `${a.teacher_id}-${a.subject_id}-${a.division}`}>
+              <td>{a.teacher_name || a.teacher_id}</td>
+              <td>{a.subject_code || a.subject_id} {a.subject_name ? `- ${a.subject_name}` : ''}</td>
               <td>{a.division}</td>
+              <td>
+                <button onClick={() => handleDelete(a.allocation_id)} style={{ padding: '4px 8px' }}>Delete</button>
+              </td>
             </tr>
           ))}
         </tbody>

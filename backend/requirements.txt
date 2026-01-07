@@ -10,3 +10,4 @@ PyJWT>=2.0
 cryptography>=40.0.0
 bcrypt>=3.2.2
 reportlab>=4.0
+openpyxl>=3.1

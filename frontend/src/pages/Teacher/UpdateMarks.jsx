@@ -1,6 +1,7 @@
 // src/pages/Teacher/UpdateMarks.jsx
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import * as XLSX from 'xlsx';
 import api from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useLocation } from 'react-router-dom';
@@ -38,24 +39,15 @@ export default function UpdateMarks() {
   const [chosenSubjectId, setChosenSubjectId] = useState(null);
   const [chosenSubjectCode, setChosenSubjectCode] = useState(null);
   const [rows, setRows] = useState([]); // student rows for bulk entry
+  const [excelRows, setExcelRows] = useState([]);
+  const [linkedToExcel, setLinkedToExcel] = useState(false);
+  const [missingRows, setMissingRows] = useState([]);
+  const [excelSimpleMode, setExcelSimpleMode] = useState(false);
+  const fileInputRef = useRef(null);
   const location = useLocation();
 
-  useEffect(() => {
-    async function loadStudents() {
-      if (!division || !chosenSubjectCode) return;
-      setLoading(true);
-      try {
-        const res = await api.get('/teacher/students', { params: { subject_code: chosenSubjectCode, division } });
-        setStudents(res.data || []);
-      } catch (err) {
-        console.error(err);
-        setStudents([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadStudents();
-  }, [division, chosenSubjectCode]);
+  // Students are loaded on explicit Search (handleFetchStudents) or via Excel upload.
+  // Removing automatic fetch here to avoid unexpected network calls when changing selection.
 
   // read subject_id from query param when navigating from dashboard
   useEffect(() => {
@@ -124,6 +116,8 @@ export default function UpdateMarks() {
       delete copy[key];
       return copy;
     });
+    // update excel buffer if linked or if excelRows exist (keep in sync)
+    setExcelRows(prev => prev.map(r => r.roll_no === roll_no ? { ...r, [field]: value } : r));
   };
 
   const FIELD_LIMITS = {
@@ -153,33 +147,75 @@ export default function UpdateMarks() {
       const firstMsg = errors[Object.keys(errors)[0]];
       return alert(firstMsg);
     }
-    for (const r of rows) {
-      const m = r.mark || {};
-      const required = ['unit1','unit2','term','annual'];
-      for (const f of required) {
-        const v = m[f];
+    if (excelSimpleMode) {
+      // require single marks value per row
+      for (const r of rows) {
+        const m = r.mark || {};
+        const v = m.annual;
         if (v === '' || v === null || v === undefined) return alert('All marks must be entered for each student before saving');
+        const n = Number(v);
+        if (Number.isNaN(n) || n < 0 || n > 100) return alert('Enter valid numeric marks between 0 and 100');
       }
-      if (!validateScores(m)) return alert('Enter valid numeric scores within allowed ranges');
+    } else {
+      for (const r of rows) {
+        const m = r.mark || {};
+        const required = ['unit1','unit2','term','annual'];
+        for (const f of required) {
+          const v = m[f];
+          if (v === '' || v === null || v === undefined) return alert('All marks must be entered for each student before saving');
+        }
+        if (!validateScores(m)) return alert('Enter valid numeric scores within allowed ranges');
+      }
     }
 
     setLoading(true);
     try {
-      for (const r of rows) {
-        const m = r.mark || {};
-        const body = {
-          roll_no: r.roll_no,
-          division: r.division || division,
-          subject_id: Number(chosenSubjectId),
-          unit1: Number(m.unit1) || 0,
-          unit2: Number(m.unit2) || 0,
-          term: Number(m.term) || 0,
-          annual: Number(m.annual) || 0,
-        };
-        if (m.mark_id) {
-          await api.put(`/teacher/marks/${m.mark_id}`, { ...body, grace: Number(m.grace) || 0 });
-        } else {
-          await api.post('/teacher/marks', body);
+      if ((linkedToExcel || (excelRows && excelRows.length > 0) || excelSimpleMode) && rows.length > 0) {
+        // prepare entries and call batch endpoint
+        const entries = rows.map(r => {
+          const m = r.mark || {};
+          if (excelSimpleMode) {
+            return {
+              roll_no: r.roll_no,
+              division: r.division || division,
+              subject_id: Number(chosenSubjectId),
+              unit1: 0,
+              unit2: 0,
+              term: 0,
+              annual: Number(m.annual) || 0,
+              grace: Number(m.grace) || 0,
+              grade: r.grade || ''
+            };
+          }
+          return {
+            roll_no: r.roll_no,
+            division: r.division || division,
+            subject_id: Number(chosenSubjectId),
+            unit1: Number(m.unit1) || 0,
+            unit2: Number(m.unit2) || 0,
+            term: Number(m.term) || 0,
+            annual: Number(m.annual) || 0,
+            grace: Number(m.grace) || 0,
+          };
+        });
+        await api.post('/teacher/marks/batch', { entries });
+      } else {
+        for (const r of rows) {
+          const m = r.mark || {};
+          const body = {
+            roll_no: r.roll_no,
+            division: r.division || division,
+            subject_id: Number(chosenSubjectId),
+            unit1: Number(m.unit1) || 0,
+            unit2: Number(m.unit2) || 0,
+            term: Number(m.term) || 0,
+            annual: Number(m.annual) || 0,
+          };
+          if (m.mark_id) {
+            await api.put(`/teacher/marks/${m.mark_id}`, { ...body, grace: Number(m.grace) || 0 });
+          } else {
+            await api.post('/teacher/marks', body);
+          }
         }
       }
       alert('All marks saved');
@@ -257,7 +293,7 @@ export default function UpdateMarks() {
             setSubjects([]);
           }}>
             <option value="">-- select subject --</option>
-            {Array.from(new Map(allocations.map(a => [a.subject_id, a]))).values() && Array.from(new Map(allocations.map(a => [a.subject_id, a])).values()).map(a => (
+            {Array.from(new Map(allocations.map(a => [a.subject_id, a])).values()).map(a => (
               <option key={a.subject_id} value={a.subject_id}>{a.subject_code} — {a.subject_name}</option>
             ))}
           </select>
@@ -267,7 +303,7 @@ export default function UpdateMarks() {
           <label style={{ fontWeight: 600 }}>Division</label><br />
           <select value={division || ''} onChange={e => setDivision(e.target.value)}>
             <option value="">-- select division --</option>
-            {Array.from(new Set(allocations.map(a => a.division))).map(d => (
+            {['A','B','C'].map(d => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
@@ -288,80 +324,190 @@ export default function UpdateMarks() {
 
       {!loading && rows.length > 0 && (
         <div>
+          <div style={{ marginBottom: 8, color: '#444' }}>
+            <div style={{ marginBottom: 6, fontWeight: 600 }}>Excel marks workflow</div>
+            <div style={{ fontSize: 13, color: '#555' }}>
+              Use the shared Excel file to add or update marks. Required columns: Roll, Student Name, Subject, Division, Unit1, Unit2, Term, Annual, Grace. Incorrect formats will be rejected. Teachers can only update marks for their allocated subject+division.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <button onClick={async () => {
+              try {
+                const res = await api.get('/admin/excel/master', { responseType: 'blob' });
+                const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `master_marks.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+              } catch (err) {
+                console.error(err);
+                alert(err.response?.data?.error || err.message || 'Failed to download master Excel');
+              }
+            }} style={{ padding: '8px 12px' }}>Download Excel</button>
+
+            <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ padding: '8px 12px' }}>Upload Excel File</button>
+            <input ref={fileInputRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={async (e) => {
+              const f = e.target.files && e.target.files[0];
+              if (!f) return;
+              const form = new FormData();
+              form.append('file', f);
+              // optionally include division/subject as defaults
+              if (division) form.append('division', division);
+              if (chosenSubjectId) form.append('subject_id', chosenSubjectId);
+              setLoading(true);
+              try {
+                // call the non-destructive endpoint to read and match rows
+                const res = await api.post('/teacher/marks/from-excel', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+                const data = res.data || {};
+                const matched = data.matched || [];
+                const missing = data.missing || [];
+                setMissingRows(missing || []);
+                // Map matched rows into the simplified table: Roll, Name, Marks, Grade
+                if (matched.length > 0) {
+                  setRows(matched.map(m => ({ roll_no: m.roll_no, name: m.name, division: m.division, mark: { annual: m.mark?.annual ?? m.mark?.tot ?? '', mark_id: m.mark?.mark_id ?? null }, grade: m.grade || '' })));
+                  setExcelSimpleMode(true);
+                } else {
+                  setRows([]);
+                  setExcelSimpleMode(false);
+                }
+                alert((matched.length>0? matched.length + ' rows matched. ' : '') + (missing.length>0? missing.length + ' rows missing.' : '') || 'Upload processed');
+              } catch (err) {
+                console.error(err);
+                alert(err.response?.data?.error || err.message || 'Upload failed');
+              } finally {
+                setLoading(false);
+                e.target.value = '';
+              }
+            }} />
+
+            <button onClick={() => {
+              // open master excel location in new tab
+              const url = '/admin/excel/master';
+              window.open(url, '_blank');
+            }} style={{ padding: '8px 12px' }}>{linkedToExcel ? 'Unlink Excel' : 'Link to Excel'}</button>
+          </div>
           <div style={{ marginBottom: 10, fontWeight: 700 }}>
             Subject: {chosenSubjectCode} &nbsp;|&nbsp; Division: {division}
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: '#f7f9fb' }}>
-              <th style={{ padding: 8, textAlign: 'left' }}>Roll</th>
-              <th style={{ padding: 8, textAlign: 'left' }}>Name</th>
-              <th style={{ padding: 8, textAlign: 'center' }}>Unit1</th>
-              <th style={{ padding: 8, textAlign: 'center' }}>Unit2</th>
-              
-              <th style={{ padding: 8, textAlign: 'center' }}>Term</th>
-              <th style={{ padding: 8, textAlign: 'center' }}>Annual</th>
-              <th style={{ padding: 8, textAlign: 'center' }}>Grace</th>
-              <th style={{ padding: 8, textAlign: 'center' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(r => {
-              const e = r.mark || {};
-              return (
-                <tr key={r.roll_no} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: 8 }}>{r.roll_no}</td>
-                  <td style={{ padding: 8 }}>{r.name}</td>
-                  <td style={{ padding: 6, textAlign: 'center' }}>
-                    <input style={{ width: 60 }} type="number" min="0" max="25" value={e.unit1 ?? ''} onChange={ev => handleChange(r.roll_no, 'unit1', ev.target.value)} />
-                    {errors[`${r.roll_no}_unit1`] && (
-                      <div style={{ color: '#c0392b', fontSize: 12, marginTop: 4 }}>{errors[`${r.roll_no}_unit1`]}</div>
-                    )}
-                  </td>
-                  <td style={{ padding: 6, textAlign: 'center' }}>
-                    <input style={{ width: 60 }} type="number" min="0" max="25" value={e.unit2 ?? ''} onChange={ev => handleChange(r.roll_no, 'unit2', ev.target.value)} />
-                    {errors[`${r.roll_no}_unit2`] && (
-                      <div style={{ color: '#c0392b', fontSize: 12, marginTop: 4 }}>{errors[`${r.roll_no}_unit2`]}</div>
-                    )}
-                  </td>
-                  
-                  <td style={{ padding: 6, textAlign: 'center' }}>
-                    <input style={{ width: 60 }} type="number" min="0" max="50" value={e.term ?? ''} onChange={ev => handleChange(r.roll_no, 'term', ev.target.value)} />
-                    {errors[`${r.roll_no}_term`] && (
-                      <div style={{ color: '#c0392b', fontSize: 12, marginTop: 4 }}>{errors[`${r.roll_no}_term`]}</div>
-                    )}
-                  </td>
-                  <td style={{ padding: 6, textAlign: 'center' }}>
-                    <input style={{ width: 60 }} type="number" min="0" max="100" value={e.annual ?? ''} onChange={ev => handleChange(r.roll_no, 'annual', ev.target.value)} />
-                    {errors[`${r.roll_no}_annual`] && (
-                      <div style={{ color: '#c0392b', fontSize: 12, marginTop: 4 }}>{errors[`${r.roll_no}_annual`]}</div>
-                    )}
-                  </td>
-                  <td style={{ padding: 6, textAlign: 'center' }}>
-                    <input
-                      style={{ width: 60, color: e.grace ? '#c0392b' : undefined, fontWeight: e.grace ? 700 : 400 }}
-                      type="number"
-                      min="0"
-                      max="20"
-                      value={e.grace ?? 0}
-                      onChange={ev => handleChange(r.roll_no, 'grace', ev.target.value)}
-                    />
-                    {errors[`${r.roll_no}_grace`] && (
-                      <div style={{ color: '#c0392b', fontSize: 12, marginTop: 4 }}>{errors[`${r.roll_no}_grace`]}</div>
-                    )}
-                  </td>
-                  <td style={{ padding: 6, textAlign: 'center' }}>
-                    {e.mark_id ? (
-                      <button onClick={async () => { if (!window.confirm('Delete marks for ' + r.roll_no + '?')) return; try { await api.delete(`/teacher/marks/${e.mark_id}`); await handleFetchStudents(studentRoll); } catch(err){ alert('Delete failed'); } }} style={{ padding: '6px 8px', background: '#e74c3c', color: 'white' }}>Delete</button>
-                    ) : (
-                      <span style={{ color: '#888' }}>—</span>
-                    )}
-                  </td>
+          {excelSimpleMode ? (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f7f9fb' }}>
+                  <th style={{ padding: 8, textAlign: 'left' }}>Roll No.</th>
+                  <th style={{ padding: 8, textAlign: 'left' }}>Student Name</th>
+                  <th style={{ padding: 8, textAlign: 'center' }}>Marks</th>
+                  <th style={{ padding: 8, textAlign: 'center' }}>Grade</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {rows.map(r => {
+                  const e = r.mark || {};
+                  return (
+                    <tr key={r.roll_no} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: 8 }}>{r.roll_no}</td>
+                      <td style={{ padding: 8 }}>{r.name}</td>
+                      <td style={{ padding: 6, textAlign: 'center' }}>
+                        <input style={{ width: 100 }} type="number" min="0" max="100" value={e.annual ?? ''} onChange={ev => handleChange(r.roll_no, 'annual', ev.target.value)} />
+                        {errors[`${r.roll_no}_annual`] && (
+                          <div style={{ color: '#c0392b', fontSize: 12, marginTop: 4 }}>{errors[`${r.roll_no}_annual`]}</div>
+                        )}
+                      </td>
+                      <td style={{ padding: 6, textAlign: 'center' }}>
+                        <select value={r.grade || ''} onChange={ev => {
+                          const val = ev.target.value;
+                          setRows(prev => prev.map(rr => rr.roll_no === r.roll_no ? { ...rr, grade: val } : rr));
+                        }}>
+                          <option value="">--</option>
+                          <option value="A+">A+</option>
+                          <option value="A">A</option>
+                          <option value="B">B</option>
+                          <option value="C">C</option>
+                          <option value="D">D</option>
+                          <option value="F">F</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#f7f9fb' }}>
+                <th style={{ padding: 8, textAlign: 'left' }}>Roll</th>
+                <th style={{ padding: 8, textAlign: 'left' }}>Name</th>
+                <th style={{ padding: 8, textAlign: 'center' }}>Unit1</th>
+                <th style={{ padding: 8, textAlign: 'center' }}>Unit2</th>
+                
+                <th style={{ padding: 8, textAlign: 'center' }}>Term</th>
+                <th style={{ padding: 8, textAlign: 'center' }}>Annual</th>
+                <th style={{ padding: 8, textAlign: 'center' }}>Grace</th>
+                <th style={{ padding: 8, textAlign: 'center' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => {
+                const e = r.mark || {};
+                return (
+                  <tr key={r.roll_no} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: 8 }}>{r.roll_no}</td>
+                    <td style={{ padding: 8 }}>{r.name}</td>
+                    <td style={{ padding: 6, textAlign: 'center' }}>
+                      <input style={{ width: 60 }} type="number" min="0" max="25" value={e.unit1 ?? ''} onChange={ev => handleChange(r.roll_no, 'unit1', ev.target.value)} />
+                      {errors[`${r.roll_no}_unit1`] && (
+                        <div style={{ color: '#c0392b', fontSize: 12, marginTop: 4 }}>{errors[`${r.roll_no}_unit1`]}</div>
+                      )}
+                    </td>
+                    <td style={{ padding: 6, textAlign: 'center' }}>
+                      <input style={{ width: 60 }} type="number" min="0" max="25" value={e.unit2 ?? ''} onChange={ev => handleChange(r.roll_no, 'unit2', ev.target.value)} />
+                      {errors[`${r.roll_no}_unit2`] && (
+                        <div style={{ color: '#c0392b', fontSize: 12, marginTop: 4 }}>{errors[`${r.roll_no}_unit2`]}</div>
+                      )}
+                    </td>
+                    
+                    <td style={{ padding: 6, textAlign: 'center' }}>
+                      <input style={{ width: 60 }} type="number" min="0" max="50" value={e.term ?? ''} onChange={ev => handleChange(r.roll_no, 'term', ev.target.value)} />
+                      {errors[`${r.roll_no}_term`] && (
+                        <div style={{ color: '#c0392b', fontSize: 12, marginTop: 4 }}>{errors[`${r.roll_no}_term`]}</div>
+                      )}
+                    </td>
+                    <td style={{ padding: 6, textAlign: 'center' }}>
+                      <input style={{ width: 60 }} type="number" min="0" max="100" value={e.annual ?? ''} onChange={ev => handleChange(r.roll_no, 'annual', ev.target.value)} />
+                      {errors[`${r.roll_no}_annual`] && (
+                        <div style={{ color: '#c0392b', fontSize: 12, marginTop: 4 }}>{errors[`${r.roll_no}_annual`]}</div>
+                      )}
+                    </td>
+                    <td style={{ padding: 6, textAlign: 'center' }}>
+                      <input
+                        style={{ width: 60, color: e.grace ? '#c0392b' : undefined, fontWeight: e.grace ? 700 : 400 }}
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={e.grace ?? 0}
+                        onChange={ev => handleChange(r.roll_no, 'grace', ev.target.value)}
+                      />
+                      {errors[`${r.roll_no}_grace`] && (
+                        <div style={{ color: '#c0392b', fontSize: 12, marginTop: 4 }}>{errors[`${r.roll_no}_grace`]}</div>
+                      )}
+                    </td>
+                    <td style={{ padding: 6, textAlign: 'center' }}>
+                      {e.mark_id ? (
+                        <button onClick={async () => { if (!window.confirm('Delete marks for ' + r.roll_no + '?')) return; try { await api.delete(`/teacher/marks/${e.mark_id}`); await handleFetchStudents(studentRoll); } catch(err){ alert('Delete failed'); } }} style={{ padding: '6px 8px', background: '#e74c3c', color: 'white' }}>Delete</button>
+                      ) : (
+                        <span style={{ color: '#888' }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          )}
         </div>
       )}
 

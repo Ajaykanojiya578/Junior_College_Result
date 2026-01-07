@@ -29,6 +29,11 @@ CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 # Maximum allowance for grace marks (adjustable)
 GRACE_MAX = int(os.getenv("GRACE_MAX", 15))
 
+# Path to the shared master Excel file used by teachers/admins
+MASTER_EXCEL_PATH = os.getenv("MASTER_EXCEL_PATH", os.path.join(os.path.dirname(__file__), "db_exports", "master_marks.xlsx"))
+# Expected master sheet name
+MASTER_EXCEL_SHEET = os.getenv("MASTER_EXCEL_SHEET", "Marks")
+
 # Optional Config class (USES SAME URI)
 class Config:
     SECRET_KEY = SECRET_KEY
