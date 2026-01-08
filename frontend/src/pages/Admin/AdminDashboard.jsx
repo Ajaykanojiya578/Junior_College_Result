@@ -8,7 +8,6 @@ export default function AdminDashboard() {
   const { user, logout } = useAuth();
 
   const menu = [
-    { key: 'dashboard', label: 'Dashboard', to: '/admin' },
     { key: 'teachers', label: 'Manage Teachers', to: '/admin/teachers' },
     { key: 'view-results', label: 'View Complete Result', to: '/admin/results' },
     { key: 'alloc', label: 'Allocate Subjects', to: '/admin/allocations' },
